@@ -32,11 +32,13 @@ func main() {
 	serverUDPAddr, err := net.ResolveUDPAddr("udp", serverAddr)
 	checkErr(err)
 
-	serverSocket, err := net.ListenUDP("udp", serverUDPAddr)
-	checkErr(err)
-	defer serverSocket.Close()
+	var serverSocket *net.UDPConn
 
 	for {
+		serverSocket, err = net.ListenUDP("udp", serverUDPAddr)
+		checkErr(err)
+		defer serverSocket.Close()
+		fmt.Println(123132132)
 		buf := make([]byte, server_recv_len)
 		_, clientUDPAddr, err := serverSocket.ReadFromUDP(buf)
 
@@ -101,46 +103,47 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	finished := 0
 
 	// sync.WaitGroup Add添加两个协程
-	wg.Add(2)
+	wg.Add(1)
 	// 开一个协程后台接收客户端发送回来的确认包
 	go func() {
 		defer wg.Done()
 		for {
+			select {
+			case <-stopRcv:
+				fmt.Println("exit rcv ackpkt routine")
+				return
+			default:
+			}
 			rcvpkt := &models.Packet{}
 			rcvpkt.FromBytes(rdt_rcv(serverSocket))
 			fmt.Println("rcvpkt.Ack: " + strconv.Itoa(int(rcvpkt.Ack)))
 			rwnd = rcvpkt.Rwnd
-			if base > rcvpkt.Ack {
-				return
-			}
-			if rcvpkt.Ack == packets[0].Seqnum {
-				packets = packets[1:]
-			}
-			base = rcvpkt.Ack + 1
-			if base == nextseqnum {
-				// 停止计时器stop
-				timer.Stop()
-			} else {
-				// 启动定时器reset
-				timer.Reset(1 * time.Second)
-			}
-			if rcvpkt.Finished == byte(1) {
-				fmt.Println("rcvpkt.Finished" + strconv.Itoa(int(rcvpkt.Finished)))
-				sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), []byte{})
-				udt_send(serverSocket, sndpkt, clientUDPAddr)
-				packets = append(packets, sndpkt)
-				nextseqnum += 1
-			}
-			select {
-			case <-stopRcv:
-				return
-			default:
+			if base <= rcvpkt.Ack {
+				if rcvpkt.Ack == packets[0].Seqnum {
+					packets = packets[1:]
+				}
+				base = rcvpkt.Ack + 1
+				if base == nextseqnum {
+					// 停止计时器stop
+					timer.Stop()
+				} else {
+					// 启动定时器reset
+					timer.Reset(1 * time.Second)
+				}
+				if rcvpkt.Finished == byte(1) {
+					fmt.Println("rcvpkt.Finished" + strconv.Itoa(int(rcvpkt.Finished)))
+					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), []byte{})
+					udt_send(serverSocket, sndpkt, clientUDPAddr)
+					packets = append(packets, sndpkt)
+					nextseqnum += 1
+				}
 			}
 		}
 	}()
 
 	// 开一个协程来进行定时器设置
 	// 如果超时，重新发送数据包, 设置定时器
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for {
@@ -154,6 +157,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 					}
 				}
 			case <-stopTimer:
+				fmt.Println("exit timer routine")
 				return
 			}
 		}
@@ -169,8 +173,8 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			}
 			fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
 			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), buf)
-			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			packets = append(packets, sndpkt)
+			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			if base == nextseqnum {
 				timer.Reset(1 * time.Second)
 			}
@@ -180,11 +184,12 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			}
 		}
 	}
-	time.Sleep(10 * time.Second)
+	time.Sleep(5*time.Second)
 	stopTimer <- 1
+	serverSocket.Close()
 	stopRcv <- 1
 	wg.Wait()
-	fmt.Println("传输结束")
+	fmt.Println("transfer finished")
 }
 
 func handlePutFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {
