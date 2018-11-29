@@ -14,7 +14,7 @@
 
 package main
 
-import "LFTP/cmd"
+import "github.com/liuyh73/LFTP_Pipeline/LFTP/cmd"
 
 func main() {
 	cmd.Execute()

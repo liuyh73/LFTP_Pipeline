@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	server_ip       = "192.168.137.234"
+	server_ip       = "127.0.0.1"
 	server_port     = "8808"
-	server_send_len = 1992
+	server_send_len = 1982
 	server_recv_len = 2000
 )
 
@@ -108,28 +108,33 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		for {
 			rcvpkt := &models.Packet{}
 			rcvpkt.FromBytes(rdt_rcv(serverSocket))
-			fmt.Println("rcvpkt.Ack" + strconv.Itoa(int(rcvpkt.Ack)))
-			base = rcvpkt.Ack + 1
+			fmt.Println("rcvpkt.Ack: " + strconv.Itoa(int(rcvpkt.Ack)))
 			rwnd = rcvpkt.Rwnd
-			if base == packets[0].Seqnum {
+			if base > rcvpkt.Ack {
+				return
+			}
+			if rcvpkt.Ack == packets[0].Seqnum {
 				packets = packets[1:]
 			}
+			base = rcvpkt.Ack + 1
 			if base == nextseqnum {
 				// 停止计时器stop
 				timer.Stop()
 			} else {
 				// 启动定时器reset
-				timer.Reset(5 * time.Second)
+				timer.Reset(1 * time.Second)
 			}
 			if rcvpkt.Finished == byte(1) {
 				fmt.Println("rcvpkt.Finished" + strconv.Itoa(int(rcvpkt.Finished)))
 				sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), []byte{})
 				udt_send(serverSocket, sndpkt, clientUDPAddr)
 				packets = append(packets, sndpkt)
+				nextseqnum += 1
 			}
 			select {
 			case <-stopRcv:
 				return
+			default:
 			}
 		}
 	}()
@@ -141,11 +146,12 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		for {
 			select {
 			case <-timer.C:
-				fmt.Println("timer.timeout")
-				timer.Reset(5 * time.Second)
-				for _, sndpkt := range packets {
-					fmt.Println("timer.timeout: send pkg" + strconv.Itoa(int(sndpkt.Seqnum)))
-					udt_send(serverSocket, sndpkt, clientUDPAddr)
+				timer.Reset(1 * time.Second)
+				for i, sndpkt := range packets {
+					if i < int(rwnd) {
+						fmt.Println("timer.timeout: send pkg" + strconv.Itoa(int(sndpkt.Seqnum)))
+						udt_send(serverSocket, sndpkt, clientUDPAddr)
+					}
 				}
 			case <-stopTimer:
 				return
@@ -157,16 +163,16 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	for {
 		if nextseqnum <= base+rwnd-1 {
 			buf := make([]byte, server_send_len)
-			_, err1 := file.Read(buf)
-			if err1 == io.EOF {
+			_, err := file.Read(buf)
+			if err == io.EOF {
 				finished = 1
 			}
-			fmt.Println("主线程发送数据包" + strconv.Itoa(int(nextseqnum)))
+			fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
 			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), buf)
 			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			packets = append(packets, sndpkt)
 			if base == nextseqnum {
-				timer.Reset(5 * time.Second)
+				timer.Reset(1 * time.Second)
 			}
 			nextseqnum += 1
 			if finished == 1 {
@@ -174,10 +180,11 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			}
 		}
 	}
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 	stopTimer <- 1
 	stopRcv <- 1
 	wg.Wait()
+	fmt.Println("传输结束")
 }
 
 func handlePutFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {

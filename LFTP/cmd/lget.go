@@ -17,6 +17,8 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -37,13 +39,15 @@ var lgetCmd = &cobra.Command{
 	Long:  `We can use LFTP lget <file> to get a file from server.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("lget called")
+		rand.Seed(time.Now().UnixNano())
+		stopTimer := make(chan int)
 		expectedseqnum := 1
 		bufSize := 50
+		rwnd := 50
 		var bufs bytes.Buffer
 		var timer *time.Timer
-		var sndpkt *models.Packet
 		var wg sync.WaitGroup
-		stopTimer := make(chan int)
+		var sndpkt *models.Packet
 		// 获取raddr
 		serverAddr := host + ":" + port
 		raddr, err := net.ResolveUDPAddr("udp", serverAddr)
@@ -63,33 +67,60 @@ var lgetCmd = &cobra.Command{
 		// 创建文件句柄
 		outputFile, err := os.OpenFile(lgetFile, os.O_CREATE|os.O_TRUNC, 0600)
 		checkErr(err)
+
+		// 模拟流控制，开一个协程，每0.5s从bufs中随机读取n个包写入到文件，更新缓冲区大小
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for {
+				time.Sleep(500 * time.Millisecond)
+				count := rand.Intn(bufSize-rwnd+1) + 5
+				for i := 0; i < count; i++ {
+					buf := make([]byte, config.CLIENT_RECV_LEN)
+					length, err := bufs.Read(buf)
+					rcvpkt := &models.Packet{}
+					rcvpkt.FromBytes(buf)
+					if length > 0 {
+						fmt.Println("Read lenth: " + strconv.Itoa(len(rcvpkt.Data)))
+						outputFile.Write(rcvpkt.Data)
+					}
+					fmt.Println("flow: " + strconv.Itoa(int(rcvpkt.Finished)))
+					if rcvpkt.Finished == byte(1) {
+						return
+					}
+					if err == io.EOF {
+						break
+					}
+				}
+			}
+		}()
+
 		for {
 			rcvpkt := &models.Packet{}
 			buf := rdt_rcv(clientSocket)
 			rcvpkt.FromBytes(buf)
-			if rcvpkt.Seqnum == rune(expectedseqnum) && bufSize > 0 {
-				bufSize -= 1
-				sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(bufSize), byte(1), rcvpkt.Finished, buf)
+			if rcvpkt.Seqnum == rune(expectedseqnum) && rwnd > 1 {
+				rwnd -= 1
+				sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(rwnd), byte(1), rcvpkt.Finished, []byte{})
 
-				bufs.Write(sndpkt.ToBytes())
+				bufs.Write(buf)
 				expectedseqnum += 1
 			}
 			clientSocket.Write(sndpkt.ToBytes())
 			if rcvpkt.Finished == byte(1) {
-				timer = time.NewTimer(5 * time.Second)
+				timer = time.NewTimer(1 * time.Second)
 				break
 			}
 		}
-		wg.Add(1)
 		// 如果超时，重新发送数据包sndpkt, 设置定时器
 		go func() {
 			defer wg.Done()
 			for {
 				select {
 				case <-timer.C:
-					fmt.Println("发送数据包0超时")
+					fmt.Println("发送数据包" + strconv.Itoa(int(sndpkt.Seqnum)) + "超时")
 					clientSocket.Write(sndpkt.ToBytes())
-					timer.Reset(5)
+					timer.Reset(1 * time.Second)
 				case <-stopTimer:
 					return
 				}
@@ -105,9 +136,6 @@ var lgetCmd = &cobra.Command{
 			}
 		}
 		stopTimer <- 1
-		// ACK == 0
-		// 取消定时器
-		timer.Stop()
 		wg.Wait()
 	},
 }
@@ -129,20 +157,11 @@ func init() {
 	lgetCmd.Flags().StringVarP(&port, "port", "P", config.SERVER_PORT, "Server port")
 }
 
-func WriteDataToFile(clientSocket *net.UDPConn, outputFile *os.File, packetRcv *models.Packet) bool {
+func WriteDataToFile(clientSocket *net.UDPConn, outputFile *os.File, packetRcv *models.Packet) {
 	// 收到下层的0或1，读取收到的数据包
 	length, err := outputFile.Write(packetRcv.Data)
 	fmt.Println("Read lenth: " + strconv.Itoa(length))
 	checkErr(err)
-
-	// 传输完成，判断是否传输完成
-	if packetRcv.Finished == byte(1) {
-		fmt.Println("end")
-		packetSnd := models.NewPacket(byte(0), byte(packetRcv.PkgNum), byte(1), byte(1), []byte{})
-		clientSocket.Write(packetSnd.ToBytes())
-		return true
-	}
-	return false
 }
 
 func rdt_rcv(clientSocket *net.UDPConn) []byte {
