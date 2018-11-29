@@ -59,8 +59,6 @@ var lgetCmd = &cobra.Command{
 		defer clientSocket.Close()
 		lgetPacket := models.NewPacket(rune(0), rune(0), rune(bufSize), byte(1), byte(0), []byte("lget: "+lgetFile))
 		fmt.Println(lgetFile)
-		// 设置等待响应时间
-		clientSocket.SetDeadline(time.Now().Add(10 * time.Second))
 		// 向服务器发送请求
 		_, err = clientSocket.Write(lgetPacket.ToBytes())
 		checkErr(err)
@@ -81,6 +79,7 @@ var lgetCmd = &cobra.Command{
 					rcvpkt := &models.Packet{}
 					rcvpkt.FromBytes(buf)
 					if length > 0 {
+						rwnd += 1
 						fmt.Println("Read lenth: " + strconv.Itoa(len(rcvpkt.Data)))
 						outputFile.Write(rcvpkt.Data)
 					}
