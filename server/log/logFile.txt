@@ -42,3 +42,13 @@
 [LFTP lget 1.ico]2018/11/30 15:59:35 read udp 127.0.0.1:8808: use of closed network connection
 [LFTP lget 1.ico]2018/11/30 15:59:35 退出接收客户端确认包协程
 [LFTP lget 1.ico]2018/11/30 15:59:35 传输结束
+[LFTP lget 1.ico]2018/11/30 16:11:12 开始传输...
+[LFTP lget 1.ico]2018/11/30 16:11:12 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 16:11:12 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 16:11:17 退出定时器协程
+[LFTP lget 1.ico]2018/11/30 16:11:17 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 16:11:17 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 16:11:17 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 16:11:17 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 16:11:17 退出接收客户端确认包协程
+[LFTP lget 1.ico]2018/11/30 16:11:17 传输结束

@@ -18,3 +18,5 @@
 [LFTP lget 21ico]2018/11/30 15:59:26 文件不存在
 [LFTP lget 1.ico]2018/11/30 15:59:30 成功接收服务端Finished确认包
 [LFTP lget 1.ico]2018/11/30 15:59:30 传输结束
+[LFTP lget 1.ico]2018/11/30 16:11:12 成功接收服务端Finished确认包
+[LFTP lget 1.ico]2018/11/30 16:11:13 传输结束

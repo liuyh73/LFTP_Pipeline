@@ -24,14 +24,14 @@ type Packet struct {
 }
 
 // 初始化一个Packet包
-func NewPacket(seqnum, ack, rwnd rune, status, finished byte, data []byte) *Packet {
+func NewPacket(seqnum, ack, rwnd rune, status, finished byte, length rune, data []byte) *Packet {
 	packet := &Packet{}
 	packet.Seqnum = seqnum
 	packet.Ack = ack
 	packet.Rwnd = rwnd
 	packet.Status = status
 	packet.Finished = finished
-	packet.Length = rune(len(data))
+	packet.Length = length
 	packet.Data = data
 	return packet
 }

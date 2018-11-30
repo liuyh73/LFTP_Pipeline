@@ -58,7 +58,7 @@ var lgetCmd = &cobra.Command{
 		clientSocket, err := net.DialUDP("udp", nil, raddr)
 		checkErr(err)
 		defer clientSocket.Close()
-		lgetPacket := models.NewPacket(rune(0), rune(0), rune(bufSize), byte(1), byte(0), []byte("lget: "+lgetFile))
+		lgetPacket := models.NewPacket(rune(0), rune(0), rune(bufSize), byte(1), byte(0), rune(len([]byte("lget: "+lgetFile))),[]byte("lget: "+lgetFile))
 
 		// 向服务器发送请求
 		_, err = clientSocket.Write(lgetPacket.ToBytes())
@@ -112,7 +112,7 @@ var lgetCmd = &cobra.Command{
 					log.Logger.Println(string(rcvpkt.Data))
 					return
 				}
-				sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(rwnd), byte(1), rcvpkt.Finished, []byte{})
+				sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(rwnd), byte(1), rcvpkt.Finished, rune(0),[]byte{})
 
 				bufs.Write(buf)
 				expectedseqnum += 1

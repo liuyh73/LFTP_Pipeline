@@ -71,11 +71,11 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	_, err := os.Stat(pathname)
 	// serverSocket.SetDeadline(time.Now().Add(10 * time.Second))
 	// lget file不存在
-	fmt.Println("wenjianbucunzai ")
 	if os.IsNotExist(err) {
-		log.Logger.Println("文件", pathname, "不存在")
-		fmt.Println("文件", pathname, "不存在")
-		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("文件不存在")))
+		FileNotExists := "文件不存在"
+		log.Logger.Println(FileNotExists)
+		fmt.Println(FileNotExists)
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(FileNotExists))),[]byte(FileNotExists))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
 		serverSocket.Close()
 		return
@@ -84,9 +84,10 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	file, err := os.Open(pathname)
 	defer file.Close()
 	if err != nil {
-		log.Logger.Println("打开文件", pathname, "失败")
-		fmt.Println("打开文件", pathname, "失败")
-		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("打开文件失败")))
+		OpenFileFailed := "打开文件失败"
+		log.Logger.Println(OpenFileFailed)
+		fmt.Println(OpenFileFailed)
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(OpenFileFailed))),[]byte(OpenFileFailed))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
 		serverSocket.Close()
 		return
@@ -155,7 +156,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 				// 等待时间在函数最后面设置。
 				if rcvpkt.Finished == byte(1) {
 					log.Logger.Println("发送Finished数据包")
-					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), []byte{})
+					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), rune(0), []byte{})
 					udt_send(serverSocket, sndpkt, clientUDPAddr)
 					packets = append(packets, sndpkt)
 					nextseqnum += 1
@@ -196,13 +197,13 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	for {
 		if nextseqnum <= base+rwnd-1 {
 			buf := make([]byte, server_send_len)
-			_, err := file.Read(buf)
+			length, err := file.Read(buf)
 			// 读到文件末尾
 			if err == io.EOF {
 				finished = 1
 			}
 			// fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
-			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), buf)
+			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), rune(length), buf)
 			packets = append(packets, sndpkt)
 			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			// 如果base == nextseqnum，表示当前链路中没有已发送还未确认的包，也没有定时器，所以我们需要启动定时器
