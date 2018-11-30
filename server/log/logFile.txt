@@ -1,0 +1,44 @@
+[LFTP lget 1.ico]2018/11/30 15:50:56 开始传输...
+[LFTP lget 1.ico]2018/11/30 15:50:56 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 15:50:56 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 15:50:57 发送数据包 2 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:50:58 发送数据包 2 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:50:59 发送数据包 2 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:51:00 发送数据包 2 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:54:58 开始传输...
+[LFTP lget 1.ico]2018/11/30 15:54:58 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 15:54:58 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 15:55:03 退出定时器协程
+[LFTP lget 1.ico]2018/11/30 15:55:03 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 15:55:03 退出接收客户端确认包协程
+[LFTP lget 1.ico]2018/11/30 15:55:03 传输结束
+[LFTP lget 1.ico]2018/11/30 15:56:33 开始传输...
+[LFTP lget 1.ico]2018/11/30 15:56:33 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 15:56:33 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 15:56:34 发送数据包 1 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:56:35 发送数据包 1 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:56:36 发送数据包 1 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:56:37 发送数据包 1 未被接收方确认，再次发送
+[LFTP lget 1.ico]2018/11/30 15:56:38 退出定时器协程
+[LFTP lget 1.ico]2018/11/30 15:56:38 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 15:56:38 退出接收客户端确认包协程
+[LFTP lget 1.ico]2018/11/30 15:56:38 传输结束
+[LFTP lget 1.ico]2018/11/30 15:56:38 listen udp 127.0.0.1:8808: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+[LFTP lget 1.ico]2018/11/30 15:57:51 开始传输...
+[LFTP lget 1.ico]2018/11/30 15:57:51 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 15:57:51 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 15:57:56 退出定时器协程
+[LFTP lget 1.ico]2018/11/30 15:57:56 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 15:57:56 退出接收客户端确认包协程
+[LFTP lget 1.ico]2018/11/30 15:57:56 传输结束
+[LFTP lget 2.ico]2018/11/30 15:58:18 文件 2.ico 不存在
+[LFTP lget 2.ico]2018/11/30 15:58:19 listen udp 127.0.0.1:8808: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+[LFTP lget 2.ico]2018/11/30 15:59:19 文件 2.ico 不存在
+[LFTP lget 21ico]2018/11/30 15:59:26 文件 21ico 不存在
+[LFTP lget 1.ico]2018/11/30 15:59:30 开始传输...
+[LFTP lget 1.ico]2018/11/30 15:59:30 发送Finished数据包
+[LFTP lget 1.ico]2018/11/30 15:59:30 等待五秒确保客户端成功断开连接之后，服务端断开连接
+[LFTP lget 1.ico]2018/11/30 15:59:35 退出定时器协程
+[LFTP lget 1.ico]2018/11/30 15:59:35 read udp 127.0.0.1:8808: use of closed network connection
+[LFTP lget 1.ico]2018/11/30 15:59:35 退出接收客户端确认包协程
+[LFTP lget 1.ico]2018/11/30 15:59:35 传输结束

@@ -15,7 +15,7 @@
 package cmd
 
 import (
-	"fmt"
+	"github.com/liuyh73/LFTP_Pipeline/LFTP/log"
 
 	"github.com/spf13/cobra"
 )
@@ -23,15 +23,10 @@ import (
 // lsendCmd represents the lsend command
 var lsendCmd = &cobra.Command{
 	Use:   "lsend",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "lsend command helps us to send a file to server.",
+	Long:  `We can use LFTP lsend -f <file> to send a file to server.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("lsend called")
+		log.Logger.SetPrefix("[LFTP lsend " + lgetFile + "]")
 	},
 }
 

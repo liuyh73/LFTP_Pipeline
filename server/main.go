@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/liuyh73/LFTP_Pipeline/LFTP/models"
+	"github.com/liuyh73/LFTP_Pipeline/server/log"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 
 func checkErr(err error) {
 	if err != nil {
-		log.Println(err)
+		log.Logger.Println(err)
 	}
 }
 
@@ -33,24 +33,25 @@ func main() {
 	checkErr(err)
 
 	var serverSocket *net.UDPConn
-
 	for {
+		// 获取监听UDPAddr的套接字
 		serverSocket, err = net.ListenUDP("udp", serverUDPAddr)
 		checkErr(err)
 		defer serverSocket.Close()
+		// 获取接收方命令包
 		buf := make([]byte, server_recv_len)
 		_, clientUDPAddr, err := serverSocket.ReadFromUDP(buf)
-
 		checkErr(err)
-		packet := &models.Packet{}
-		packet.FromBytes(buf)
-		fmt.Println(packet)
-		dataStr := string(packet.Data)
-		fmt.Println("Received:", dataStr)
+		// 读取命令包
+		cmdRcvpkt := &models.Packet{}
+		cmdRcvpkt.FromBytes(buf)
+		dataStr := string(cmdRcvpkt.Data)
 		if strings.Split(dataStr, ": ")[0] == "conn" {
 			handleConn(serverSocket, clientUDPAddr)
 		} else if strings.Split(dataStr, ": ")[0] == "lget" {
-			handleGetFile(serverSocket, clientUDPAddr, packet.Rwnd, strings.Split(dataStr, ": ")[1])
+			lgetFile := strings.Split(dataStr, ": ")[1]
+			log.Logger.SetPrefix("[LFTP lget " + lgetFile + "]")
+			handleGetFile(serverSocket, clientUDPAddr, cmdRcvpkt.Rwnd, lgetFile)
 		} else if strings.Split(dataStr, ": ")[0] == "lsend" {
 			handlePutFile(serverSocket, clientUDPAddr)
 		} else if strings.Split(dataStr, ": ")[0] == "list" {
@@ -70,21 +71,27 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	_, err := os.Stat(pathname)
 	// serverSocket.SetDeadline(time.Now().Add(10 * time.Second))
 	// lget file不存在
+	fmt.Println("wenjianbucunzai ")
 	if os.IsNotExist(err) {
-		fmt.Printf("The file %s doesn't exist", pathname)
-		packetSnd := models.NewPacket(rune(0), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("The file %s doesn't exist", pathname)))
+		log.Logger.Println("文件", pathname, "不存在")
+		fmt.Println("文件", pathname, "不存在")
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("文件不存在")))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
+		serverSocket.Close()
 		return
 	}
 	// 打开该文件
 	file, err := os.Open(pathname)
 	defer file.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "An error occurred on opening the inputfile: %s\nDoes the file exist?\n", pathname)
-		packetSnd := models.NewPacket(rune(0), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("The file %s doesn't exist", pathname)))
+		log.Logger.Println("打开文件", pathname, "失败")
+		fmt.Println("打开文件", pathname, "失败")
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), []byte(fmt.Sprintf("打开文件失败")))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
+		serverSocket.Close()
 		return
 	}
+	log.Logger.Println("开始传输...")
 	// 设置base、nextseqnum
 	base := rune(1)
 	nextseqnum := rune(1)
@@ -113,14 +120,13 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			// 如果没有default语句，那么直到可以从stopRcv通道读取值之前，该协程都处于阻塞状态。
 			select {
 			case <-stopRcv:
-				fmt.Println("exit rcv ackpkt routine")
+				log.Logger.Println("退出接收客户端确认包协程")
 				return
 			default:
 			}
 			// 接收客户端发送回来的ack确认包
 			rcvpkt := &models.Packet{}
 			rcvpkt.FromBytes(rdt_rcv(serverSocket))
-			fmt.Println("rcvpkt.Ack: " + strconv.Itoa(int(rcvpkt.Ack)))
 			// 获取窗口大小（客户端缓冲空闲大小）
 			rwnd = rcvpkt.Rwnd
 			// 如果ack确认包的Ack值大于或等于base值，则进入一下条件句（否则，表示确认之前所发送的包，可能发生了丢包重传现象，不进行任何操作）
@@ -148,7 +154,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 				// 如果在这段时间内，客户端不再发送Finished包，则证明客户端成功收到ack确认包，已正常断开连接；之后服务端正常断开连接即可
 				// 等待时间在函数最后面设置。
 				if rcvpkt.Finished == byte(1) {
-					fmt.Println("rcvpkt.Finished" + strconv.Itoa(int(rcvpkt.Finished)))
+					log.Logger.Println("发送Finished数据包")
 					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), []byte{})
 					udt_send(serverSocket, sndpkt, clientUDPAddr)
 					packets = append(packets, sndpkt)
@@ -173,13 +179,14 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 				// 发送所有已发送还未确认的包
 				for i, sndpkt := range packets {
 					if i < int(rwnd) {
-						fmt.Println("timer.timeout: send pkg" + strconv.Itoa(int(sndpkt.Seqnum)))
+						log.Logger.Println("发送数据包", strconv.Itoa(int(sndpkt.Seqnum)), "未被接收方确认，再次发送")
+						fmt.Println("发送数据包", strconv.Itoa(int(sndpkt.Seqnum)), "未被接收方确认，再次发送")
 						udt_send(serverSocket, sndpkt, clientUDPAddr)
 					}
 				}
 			// 收到结束定时的信号，退出协程
 			case <-stopTimer:
-				fmt.Println("exit timer routine")
+				log.Logger.Println("退出定时器协程")
 				return
 			}
 		}
@@ -194,7 +201,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			if err == io.EOF {
 				finished = 1
 			}
-			fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
+			// fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
 			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), buf)
 			packets = append(packets, sndpkt)
 			udt_send(serverSocket, sndpkt, clientUDPAddr)
@@ -212,7 +219,10 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	}
 
 	// 先定义等待5s，后续过程可能继续修改（5s时间足够服务端重传4-5次最后的Finished ack确认包）；此时间过后，默认双方传输结束
+	log.Logger.Println("等待五秒确保客户端成功断开连接之后，服务端断开连接")
+	fmt.Println("等待五秒确保客户端成功断开连接之后，服务端断开连接")
 	time.Sleep(5 * time.Second)
+	
 	// 结束定时器协程
 	stopTimer <- 1
 	// 关闭连接
@@ -221,7 +231,8 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	stopRcv <- 1
 	// 等待所有协程结束
 	wg.Wait()
-	fmt.Println("transfer finished")
+	fmt.Println("传输结束")
+	log.Logger.Println("传输结束")
 }
 
 func handlePutFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {

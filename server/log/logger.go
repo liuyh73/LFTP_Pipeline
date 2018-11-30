@@ -21,7 +21,7 @@ func init() {
 	ExecPath = strings.Replace(ExecPath, "\\", "/", -1)
 
 	var logHandler *os.File
-	logHandler, err := os.OpenFile(ExecPath+"github.com/liuyh73/LFTP_Pipeline/LFTP/log/logFile.txt", os.O_CREATE|os.O_APPEND, 0666)
+	logHandler, err := os.OpenFile(ExecPath+"github.com/liuyh73/LFTP_Pipeline/server/log/logFile.txt", os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
 	}

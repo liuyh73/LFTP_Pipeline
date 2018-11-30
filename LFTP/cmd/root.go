@@ -21,6 +21,7 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/liuyh73/LFTP_Pipeline/LFTP/log"
 )
 
 var cfgFile string
@@ -92,6 +93,6 @@ func initConfig() {
 
 func checkErr(err error) {
 	if err != nil {
-		fmt.Println(err)
+		log.Logger.Println(err)
 	}
 }
