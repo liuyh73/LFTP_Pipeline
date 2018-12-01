@@ -49,7 +49,7 @@ func (packet *Packet) ToBytes() []byte {
 	return bytesBuf.Bytes()
 }
 
-// 将[]bytes解析到packet包中（拆包）
+// 将[]byte解析到packet包中（拆包）
 func (packet *Packet) FromBytes(buf []byte) {
 	// buf = bytes.TrimRight(buf, "\x00")
 	bytesBuf := bytes.NewBuffer(buf)
@@ -67,7 +67,7 @@ func (packet *Packet) FromBytes(buf []byte) {
 	length, _, err := bytesBuf.ReadRune()
 	checkErr(err)
 	packet.Length = length
-	packet.Data = bytesBuf.Next(int(packet.Length))
+	packet.Data = bytesBuf.Next(int(length))
 }
 
 func checkErr(err error) {

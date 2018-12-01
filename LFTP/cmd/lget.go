@@ -15,8 +15,8 @@
 package cmd
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/liuyh73/LFTP_Pipeline/LFTP/config"
-	"github.com/liuyh73/LFTP_Pipeline/LFTP/models"
 	"github.com/liuyh73/LFTP_Pipeline/LFTP/log"
+	"github.com/liuyh73/LFTP_Pipeline/LFTP/models"
 	"github.com/spf13/cobra"
 )
 
@@ -40,14 +40,19 @@ var lgetCmd = &cobra.Command{
 	Long:  `We can use LFTP lget -f <file> to get a file from server.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Logger.SetPrefix("[LFTP lget " + lgetFile + "]")
+		log.Logger.Println("开始下载...")
 		rand.Seed(time.Now().UnixNano())
 		stopTimer := make(chan int)
 		expectedseqnum := 1
 		bufSize := 50
 		rwnd := 50
 		var bufs bytes.Buffer
-		var timer *time.Timer
+		timer := time.NewTimer(5 * time.Second)
 		var wg sync.WaitGroup
+		var (
+			rwndMutex sync.Mutex
+			bufsMutex sync.Mutex
+		)
 		var sndpkt *models.Packet
 		// 获取raddr
 		serverAddr := host + ":" + port
@@ -58,7 +63,7 @@ var lgetCmd = &cobra.Command{
 		clientSocket, err := net.DialUDP("udp", nil, raddr)
 		checkErr(err)
 		defer clientSocket.Close()
-		lgetPacket := models.NewPacket(rune(0), rune(0), rune(bufSize), byte(1), byte(0), rune(len([]byte("lget: "+lgetFile))),[]byte("lget: "+lgetFile))
+		lgetPacket := models.NewPacket(rune(0), rune(0), rune(bufSize), byte(1), byte(0), rune(len([]byte("lget: "+lgetFile))), []byte("lget: "+lgetFile))
 
 		// 向服务器发送请求
 		_, err = clientSocket.Write(lgetPacket.ToBytes())
@@ -66,24 +71,33 @@ var lgetCmd = &cobra.Command{
 		// 创建文件句柄
 		outputFile, err := os.OpenFile(lgetFile, os.O_CREATE|os.O_TRUNC, 0600)
 		checkErr(err)
-
 		// 模拟流控制，开一个协程，每0.5s从buffer中随机读取n个包写入到文件，更新缓冲区大小
+		go func() {
+			for {
+				time.Sleep(1 * time.Second)
+				fmt.Println("asdfjkl;")
+			}
+		}()
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			for {
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(50 * time.Millisecond)
 				// 生成随机数，读取多个包
 				count := rand.Intn(bufSize-rwnd+1) + 5
 				for i := 0; i < count; i++ {
 					// 从buffer中读取长度为config.CLIENT_RECV_KEN长度的包
 					buf := make([]byte, config.CLIENT_RECV_LEN)
+					bufsMutex.Lock()
 					length, err := bufs.Read(buf)
+					bufsMutex.Unlock()
 					rcvpkt := &models.Packet{}
 					rcvpkt.FromBytes(buf)
 					// 如果成功读取该数据包（防止buffer为空），则将该包写入到文件
 					if length > 0 {
+						rwndMutex.Lock()
 						rwnd += 1
+						rwndMutex.Unlock()
 						// 截取buf切片中多余的零
 						outputFile.Write(rcvpkt.Data[:rcvpkt.Length])
 					}
@@ -98,32 +112,7 @@ var lgetCmd = &cobra.Command{
 				}
 			}
 		}()
-		
-		// 主线程用于获取数据包并写入到buffer中
-		for {
-			rcvpkt := &models.Packet{}
-			buf := rdt_rcv(clientSocket)
-			rcvpkt.FromBytes(buf)
-			// 如果接收到的包的序列号，符合想要的包序号，则发送确认包，并将该包写入到buffer，更新rwnd和expectedseqnum
-			if rcvpkt.Seqnum == rune(expectedseqnum) && rwnd > 1 {
-				rwnd -= 1
-				if rcvpkt.Status == byte(0) {
-					fmt.Println(string(rcvpkt.Data))
-					log.Logger.Println(string(rcvpkt.Data))
-					return
-				}
-				sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(rwnd), byte(1), rcvpkt.Finished, rune(0),[]byte{})
 
-				bufs.Write(buf)
-				expectedseqnum += 1
-			}
-			clientSocket.Write(sndpkt.ToBytes())
-			// 如果收到的包包含Finished标识，则接收方也发送包含Finished标识的包，并启动定时器，准备接收服务端Finished确认包
-			if rcvpkt.Finished == byte(1) {
-				timer = time.NewTimer(1 * time.Second)
-				break
-			}
-		}
 		// 如果超时，默认服务端未收到Finished包，重新发送数据包最后的Finished包, 并重置定时器
 		go func() {
 			defer wg.Done()
@@ -138,6 +127,41 @@ var lgetCmd = &cobra.Command{
 				}
 			}
 		}()
+
+		// 主线程用于获取数据包并写入到buffer中
+		for {
+			rcvpkt := &models.Packet{}
+			fmt.Println("wait for rcvpkt")
+			buf := rdt_rcv(clientSocket)
+			rcvpkt.FromBytes(buf)
+			// 如果接收到的包的序列号，符合想要的包序号，则发送确认包，并将该包写入到buffer，更新rwnd和expectedseqnum
+			if rcvpkt.Seqnum == rune(expectedseqnum) {
+				if rcvpkt.Status == byte(0) {
+					fmt.Println(string(rcvpkt.Data))
+					log.Logger.Println(string(rcvpkt.Data))
+					return
+				}
+				if rwnd > 1 {
+					rwndMutex.Lock()
+					rwnd -= 1
+					rwndMutex.Unlock()
+					sndpkt = models.NewPacket(rune(expectedseqnum), rune(expectedseqnum), rune(rwnd), byte(1), rcvpkt.Finished, rune(0), []byte{})
+					fmt.Println("收到数据包:", rcvpkt.Seqnum)
+					bufsMutex.Lock()
+					bufs.Write(buf)
+					bufsMutex.Unlock()
+					expectedseqnum += 1
+				}
+			}
+			fmt.Println("发送确认包：", sndpkt.Ack)
+			clientSocket.Write(sndpkt.ToBytes())
+			timer.Reset(1 * time.Second)
+			// 如果收到的包包含Finished标识，则接收方也发送包含Finished标识的包，并启动定时器，准备接收服务端Finished确认包
+			if rcvpkt.Finished == byte(1) {
+				break
+			}
+		}
+
 		// 等待接收服务端Finished确认包
 		for {
 			rcvpkt := &models.Packet{}

@@ -37,7 +37,6 @@ func main() {
 		// 获取监听UDPAddr的套接字
 		serverSocket, err = net.ListenUDP("udp", serverUDPAddr)
 		checkErr(err)
-		defer serverSocket.Close()
 		// 获取接收方命令包
 		buf := make([]byte, server_recv_len)
 		_, clientUDPAddr, err := serverSocket.ReadFromUDP(buf)
@@ -75,7 +74,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		FileNotExists := "文件不存在"
 		log.Logger.Println(FileNotExists)
 		fmt.Println(FileNotExists)
-		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(FileNotExists))),[]byte(FileNotExists))
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(FileNotExists))), []byte(FileNotExists))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
 		serverSocket.Close()
 		return
@@ -87,12 +86,18 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		OpenFileFailed := "打开文件失败"
 		log.Logger.Println(OpenFileFailed)
 		fmt.Println(OpenFileFailed)
-		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(OpenFileFailed))),[]byte(OpenFileFailed))
+		packetSnd := models.NewPacket(rune(1), rune(0), rune(0), byte(0), byte(0), rune(len([]byte(OpenFileFailed))), []byte(OpenFileFailed))
 		serverSocket.WriteToUDP(packetSnd.ToBytes(), clientUDPAddr)
 		serverSocket.Close()
 		return
 	}
 	log.Logger.Println("开始传输...")
+	var (
+		baseRWMutex       sync.RWMutex
+		nextseqnumRWMutex sync.RWMutex
+		rwndRwMutex       sync.RWMutex
+		packetsRWMutex    sync.RWMutex
+	)
 	// 设置base、nextseqnum
 	base := rune(1)
 	nextseqnum := rune(1)
@@ -110,7 +115,12 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	stopRcv := make(chan int)
 	// 文件读取结束标志
 	finished := 0
-
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			fmt.Println("asdfjkl;")
+		}
+	}()
 	// sync.WaitGroup Add添加两个协程
 	wg.Add(1)
 	// 开一个协程后台接收客户端发送回来的确认包
@@ -127,25 +137,32 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			}
 			// 接收客户端发送回来的ack确认包
 			rcvpkt := &models.Packet{}
+			fmt.Println("wait for rcvpkt")
 			rcvpkt.FromBytes(rdt_rcv(serverSocket))
 			// 获取窗口大小（客户端缓冲空闲大小）
+			rwndRwMutex.Lock()
 			rwnd = rcvpkt.Rwnd
-			// 如果ack确认包的Ack值大于或等于base值，则进入一下条件句（否则，表示确认之前所发送的包，可能发生了丢包重传现象，不进行任何操作）
-			// 实际上base应该是等于rcvpkt.Ack的
-			if base <= rcvpkt.Ack {
+			rwndRwMutex.Unlock()
+			// 如果ack确认包的Ack值大于等于base值，则进入条件句（否则，不进行任何操作）
+			fmt.Println("base: ", base, "rcvpkt.Ack: ", rcvpkt.Ack, "nextseqnum: ", nextseqnum, "rwnd: ", rwnd)
+			if base == rcvpkt.Ack {
 				// 如果ack确认包的Ack编号为packets队列中第一个已发送还未确认的包的序号，则弹出该包
-				if rcvpkt.Ack == packets[0].Seqnum {
-					packets = packets[1:]
+				packetsRWMutex.Lock()
+				for i, packet := range packets {
+					if rcvpkt.Ack == packet.Seqnum {
+						packets = packets[i+1:]
+						break
+					}
 				}
+				packetsRWMutex.Unlock()
 				// base值置为rcvpkt.Ack + 1，下一个待确认的包
+				baseRWMutex.Lock()
 				base = rcvpkt.Ack + 1
+				baseRWMutex.Unlock()
 				// base序号与nextseqnum相等，表示当前所有包都已确认，没有需要待确认的包
 				if base == nextseqnum {
-					// 停止计时器stop
 					timer.Stop()
 				} else {
-					// 收到一个ack确认包，重新更新定时器，计时下一个已发送的包
-					// 重置定时器reset
 					timer.Reset(1 * time.Second)
 				}
 				// 如果收到的ack确认包的Finished字段为1，表示文件传输结束（下面会讲到，在客户端发送结束包之前，服务端已经向客户端发送了结束包），等待服务端发送确认包；
@@ -158,8 +175,12 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 					log.Logger.Println("发送Finished数据包")
 					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), rune(0), []byte{})
 					udt_send(serverSocket, sndpkt, clientUDPAddr)
+					packetsRWMutex.Lock()
 					packets = append(packets, sndpkt)
+					packetsRWMutex.Unlock()
+					nextseqnumRWMutex.Lock()
 					nextseqnum += 1
+					nextseqnumRWMutex.Unlock()
 				}
 			}
 		}
@@ -172,46 +193,54 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		defer wg.Done()
 		for {
 			// 此处select语句与上述协程类似，等待timer定时器超时、结束定时器信号
+			fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 			select {
 			// 超时发生在客户端收不到expectseqnum的包，不断确认已接受的最后一个包的时候；由上面协程可知，当客户端不断确认最后一个已发送的包是，其revpkt.Ack值小于base，不进行任何操作，所以最终会发生超时现象
 			case <-timer.C:
 				// 如果超时，则我们需要重置定时器
 				timer.Reset(1 * time.Second)
 				// 发送所有已发送还未确认的包
-				for i, sndpkt := range packets {
-					if i < int(rwnd) {
-						log.Logger.Println("发送数据包", strconv.Itoa(int(sndpkt.Seqnum)), "未被接收方确认，再次发送")
-						fmt.Println("发送数据包", strconv.Itoa(int(sndpkt.Seqnum)), "未被接收方确认，再次发送")
-						udt_send(serverSocket, sndpkt, clientUDPAddr)
-					}
+				fmt.Println("############################")
+				baseRWMutex.Lock()
+				base = packets[0].Seqnum
+				baseRWMutex.Unlock()
+				for _, pkt := range packets {
+					log.Logger.Println("数据包", strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
+					fmt.Println("数据包", strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
+					udt_send(serverSocket, pkt, clientUDPAddr)
 				}
 			// 收到结束定时的信号，退出协程
 			case <-stopTimer:
 				log.Logger.Println("退出定时器协程")
 				return
 			}
+			fmt.Println("timer routine")
 		}
 	}()
 
 	// 主线程循环发送数据包，直到文件内容发送完毕,确认客户端接收到所有数据、退出循环
 	for {
-		if nextseqnum <= base+rwnd-1 {
+		if nextseqnum < base+rwnd {
 			buf := make([]byte, server_send_len)
 			length, err := file.Read(buf)
 			// 读到文件末尾
 			if err == io.EOF {
 				finished = 1
 			}
-			// fmt.Println("main routine: send pkg" + strconv.Itoa(int(nextseqnum)))
+			// fmt.Println("发送数据包：" + strconv.Itoa(int(nextseqnum)))
 			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), rune(length), buf)
+			packetsRWMutex.Lock()
 			packets = append(packets, sndpkt)
+			packetsRWMutex.Unlock()
 			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			// 如果base == nextseqnum，表示当前链路中没有已发送还未确认的包，也没有定时器，所以我们需要启动定时器
 			if base == nextseqnum {
 				timer.Reset(1 * time.Second)
 			}
 			// 维护nextsqenum自增
+			nextseqnumRWMutex.Lock()
 			nextseqnum += 1
+			nextseqnumRWMutex.Unlock()
 			// 发送文件结束，退出循环
 			if finished == 1 {
 				break
@@ -223,7 +252,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	log.Logger.Println("等待五秒确保客户端成功断开连接之后，服务端断开连接")
 	fmt.Println("等待五秒确保客户端成功断开连接之后，服务端断开连接")
 	time.Sleep(5 * time.Second)
-	
+
 	// 结束定时器协程
 	stopTimer <- 1
 	// 关闭连接
