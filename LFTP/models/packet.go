@@ -39,13 +39,20 @@ func NewPacket(seqnum, ack, rwnd rune, status, finished byte, length rune, data 
 // 将Packet转化为[]byte（封包）
 func (packet *Packet) ToBytes() []byte {
 	var bytesBuf bytes.Buffer
-	bytesBuf.WriteRune(packet.Seqnum)
-	bytesBuf.WriteRune(packet.Ack)
-	bytesBuf.WriteRune(packet.Rwnd)
-	bytesBuf.WriteByte(packet.Status)
-	bytesBuf.WriteByte(packet.Finished)
-	bytesBuf.WriteRune(packet.Length)
-	bytesBuf.Write(packet.Data)
+	_, err := bytesBuf.WriteRune(packet.Seqnum)
+	checkErr(err)
+	_, err = bytesBuf.WriteRune(packet.Ack)
+	checkErr(err)
+	_, err = bytesBuf.WriteRune(packet.Rwnd)
+	checkErr(err)
+	err = bytesBuf.WriteByte(packet.Status)
+	checkErr(err)
+	err = bytesBuf.WriteByte(packet.Finished)
+	checkErr(err)
+	_, err = bytesBuf.WriteRune(packet.Length)
+	checkErr(err)
+	_, err = bytesBuf.Write(packet.Data)
+	checkErr(err)
 	return bytesBuf.Bytes()
 }
 

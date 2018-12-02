@@ -119,7 +119,7 @@ var lgetCmd = &cobra.Command{
 			for {
 				select {
 				case <-timer.C:
-					log.Logger.Println("发送Finished数据包" + strconv.Itoa(int(sndpkt.Seqnum)) + "超时")
+					log.Logger.Println("发送数据包" + strconv.Itoa(int(sndpkt.Seqnum)) + "超时")
 					clientSocket.Write(sndpkt.ToBytes())
 					timer.Reset(1 * time.Second)
 				case <-stopTimer:

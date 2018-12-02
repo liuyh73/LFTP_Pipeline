@@ -96,7 +96,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 		baseRWMutex       sync.RWMutex
 		nextseqnumRWMutex sync.RWMutex
 		rwndRwMutex       sync.RWMutex
-		packetsRWMutex    sync.RWMutex
+		packetsMutex      sync.Mutex
 	)
 	// 设置base、nextseqnum
 	base := rune(1)
@@ -118,7 +118,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	go func() {
 		for {
 			time.Sleep(1 * time.Second)
-			fmt.Println("asdfjkl;")
+			fmt.Fprintln(os.Stderr, "111111111111111111;")
 		}
 	}()
 	// sync.WaitGroup Add添加两个协程
@@ -127,6 +127,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	go func() {
 		defer wg.Done()
 		for {
+			fmt.Fprintln(os.Stderr, "2222222222222222222")
 			// select 语句会选择可以读取到值的case继续执行
 			// 如果没有default语句，那么直到可以从stopRcv通道读取值之前，该协程都处于阻塞状态。
 			select {
@@ -139,22 +140,23 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			rcvpkt := &models.Packet{}
 			fmt.Println("wait for rcvpkt")
 			rcvpkt.FromBytes(rdt_rcv(serverSocket))
+			fmt.Fprintln(os.Stderr, "base: ", base, "rcvpkt.Ack: ", rcvpkt.Ack, "nextseqnum: ", nextseqnum, "rwnd: ", rwnd)
+
 			// 获取窗口大小（客户端缓冲空闲大小）
 			rwndRwMutex.Lock()
 			rwnd = rcvpkt.Rwnd
 			rwndRwMutex.Unlock()
 			// 如果ack确认包的Ack值大于等于base值，则进入条件句（否则，不进行任何操作）
-			fmt.Println("base: ", base, "rcvpkt.Ack: ", rcvpkt.Ack, "nextseqnum: ", nextseqnum, "rwnd: ", rwnd)
 			if base == rcvpkt.Ack {
 				// 如果ack确认包的Ack编号为packets队列中第一个已发送还未确认的包的序号，则弹出该包
-				packetsRWMutex.Lock()
+				packetsMutex.Lock()
 				for i, packet := range packets {
 					if rcvpkt.Ack == packet.Seqnum {
 						packets = packets[i+1:]
 						break
 					}
 				}
-				packetsRWMutex.Unlock()
+				packetsMutex.Unlock()
 				// base值置为rcvpkt.Ack + 1，下一个待确认的包
 				baseRWMutex.Lock()
 				base = rcvpkt.Ack + 1
@@ -163,6 +165,10 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 				if base == nextseqnum {
 					timer.Stop()
 				} else {
+					fmt.Println("reset timer")
+					if !timer.Stop() && len(timer.C) > 0 {
+						<-timer.C
+					}
 					timer.Reset(1 * time.Second)
 				}
 				// 如果收到的ack确认包的Finished字段为1，表示文件传输结束（下面会讲到，在客户端发送结束包之前，服务端已经向客户端发送了结束包），等待服务端发送确认包；
@@ -175,9 +181,9 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 					log.Logger.Println("发送Finished数据包")
 					sndpkt := models.NewPacket(rune(nextseqnum), rcvpkt.Seqnum, rune(0), byte(1), byte(finished), rune(0), []byte{})
 					udt_send(serverSocket, sndpkt, clientUDPAddr)
-					packetsRWMutex.Lock()
+					packetsMutex.Lock()
 					packets = append(packets, sndpkt)
-					packetsRWMutex.Unlock()
+					packetsMutex.Unlock()
 					nextseqnumRWMutex.Lock()
 					nextseqnum += 1
 					nextseqnumRWMutex.Unlock()
@@ -191,6 +197,7 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
 		for {
 			// 此处select语句与上述协程类似，等待timer定时器超时、结束定时器信号
 			fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
@@ -202,13 +209,19 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 				// 发送所有已发送还未确认的包
 				fmt.Println("############################")
 				baseRWMutex.Lock()
+				packetsMutex.Lock()
 				base = packets[0].Seqnum
+				packetsMutex.Unlock()
 				baseRWMutex.Unlock()
-				for _, pkt := range packets {
-					log.Logger.Println("数据包", strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
-					fmt.Println("数据包", strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
+
+				packetsMutex.Lock()
+				for i, pkt := range packets {
+					log.Logger.Println("数据包", i, len(packets), strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
+					fmt.Println("数据包", i, len(packets), strconv.Itoa(int(pkt.Seqnum)), "未被接收方确认，再次发送")
 					udt_send(serverSocket, pkt, clientUDPAddr)
 				}
+				packetsMutex.Unlock()
+
 			// 收到结束定时的信号，退出协程
 			case <-stopTimer:
 				log.Logger.Println("退出定时器协程")
@@ -229,12 +242,15 @@ func handleGetFile(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr, Rwnd r
 			}
 			// fmt.Println("发送数据包：" + strconv.Itoa(int(nextseqnum)))
 			sndpkt := models.NewPacket(rune(nextseqnum), rune(0), rune(0), byte(1), byte(finished), rune(length), buf)
-			packetsRWMutex.Lock()
+			packetsMutex.Lock()
 			packets = append(packets, sndpkt)
-			packetsRWMutex.Unlock()
+			packetsMutex.Unlock()
 			udt_send(serverSocket, sndpkt, clientUDPAddr)
 			// 如果base == nextseqnum，表示当前链路中没有已发送还未确认的包，也没有定时器，所以我们需要启动定时器
 			if base == nextseqnum {
+				if !timer.Stop() && len(timer.C) > 0 {
+					<-timer.C
+				}
 				timer.Reset(1 * time.Second)
 			}
 			// 维护nextsqenum自增
@@ -274,7 +290,10 @@ func handleList(serverSocket *net.UDPConn, clientUDPAddr *net.UDPAddr) {
 }
 
 func udt_send(serverSocket *net.UDPConn, sndpkt *models.Packet, clientUDPAddr *net.UDPAddr) {
+	now := time.Now()
 	_, err := serverSocket.WriteToUDP(sndpkt.ToBytes(), clientUDPAddr)
+	diff := time.Now().Sub(now)
+	fmt.Println("diff", diff.Nanoseconds())
 	fmt.Println("Write Length:" + strconv.Itoa(int(sndpkt.Length)))
 	checkErr(err)
 }
